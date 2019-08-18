@@ -12,6 +12,7 @@ const vectorTileFeatureTypes = mvt.VectorTileFeature.types;
 import {register} from '../../util/web_worker_transfer';
 import {hasPattern, addPatternDependencies} from './pattern_bucket_features';
 import loadGeometry from '../load_geometry';
+import Point from '@mapbox/point-geometry';
 import EvaluationParameters from '../../style/evaluation_parameters';
 
 import type {CanonicalTileID} from '../../source/tile_id';
@@ -23,7 +24,6 @@ import type {
     PopulateParameters
 } from '../bucket';
 import type LineStyleLayer from '../../style/style_layer/line_style_layer';
-import type Point from '@mapbox/point-geometry';
 import type {Segment} from '../segment';
 import type Context from '../../gl/context';
 import type IndexBuffer from '../../gl/index_buffer';
@@ -215,28 +215,27 @@ class LineBucket implements Bucket {
         const layout = this.layers[0].layout;
         const join = layout.get('line-join').evaluate(feature, {});
         const cap = layout.get('line-cap');
+        const collapse = layout.get('line-collapse') || false;
         const miterLimit = layout.get('line-miter-limit');
         const roundLimit = layout.get('line-round-limit');
 
         for (const line of geometry) {
-            this.addLine(line, feature, join, cap, miterLimit, roundLimit);
+            this.addLine(line, feature, join, cap, collapse, miterLimit, roundLimit);
         }
 
         this.programConfigurations.populatePaintArrays(this.layoutVertexArray.length, feature, index, imagePositions, canonical);
     }
 
-    addLine(vertices: Array<Point>, feature: BucketFeature, join: string, cap: string, miterLimit: number, roundLimit: number) {
+    addLine(vertices: Array<Point>, feature: BucketFeature, join: string, cap: string, collapse: boolean, miterLimit: number, roundLimit: number) {
         this.distance = 0;
         this.scaledDistance = 0;
         this.totalDistance = 0;
-
         if (!!feature.properties &&
             feature.properties.hasOwnProperty('mapbox_clip_start') &&
             feature.properties.hasOwnProperty('mapbox_clip_end')) {
 
             this.clipStart = +feature.properties['mapbox_clip_start'];
             this.clipEnd = +feature.properties['mapbox_clip_end'];
-
             // Calculate the total distance, in tile units, of this tiled line feature
             for (let i = 0; i < vertices.length - 1; i++) {
                 this.totalDistance += vertices[i].dist(vertices[i + 1]);
@@ -244,7 +243,7 @@ class LineBucket implements Bucket {
             this.updateScaledDistance();
         }
 
-        const isPolygon = vectorTileFeatureTypes[feature.type] === 'Polygon';
+        let isPolygon = vectorTileFeatureTypes[feature.type] === 'Polygon';
 
         // If the line has duplicate vertices at the ends, adjust start/length to remove them.
         let len = vertices.length;
@@ -257,7 +256,21 @@ class LineBucket implements Bucket {
         }
 
         // Ignore invalid geometry.
-        if (len < (isPolygon ? 3 : 2)) return;
+        const count = len - first;
+        if (count < (isPolygon ? 3 : 2)) {
+            if (count === 0 || !collapse) {
+                return;
+            }
+            //Allow lines/polygons to collapse to points
+            if (count === 1) {
+                if (len < vertices.length) {
+                    len++;
+                } else if (first > 0) {
+                    first--;
+                }
+                isPolygon = false;
+            }
+        }
 
         if (join === 'bevel') miterLimit = 1.05;
 
@@ -283,14 +296,18 @@ class LineBucket implements Bucket {
         }
 
         for (let i = first; i < len; i++) {
-
             nextVertex = i === len - 1 ?
                 (isPolygon ? vertices[first + 1] : (undefined: any)) : // if it's a polygon, treat the last vertex like the first
                 vertices[i + 1]; // just the next vertex
 
-            // if two consecutive vertices exist, skip the current one
-            if (nextVertex && vertices[i].equals(nextVertex)) continue;
-
+            // if two consecutive vertices exist,
+            // skip the current one if collapse to point is not allowed the line has more than 2 vertices.
+            const nextEqualsCurrent = nextVertex && vertices[i].equals(nextVertex);
+            if (nextEqualsCurrent) {
+                if (!collapse || len > 2) {
+                    continue;
+                }
+            }
             if (nextNormal) prevNormal = nextNormal;
             if (currentVertex) prevVertex = currentVertex;
 
@@ -299,7 +316,13 @@ class LineBucket implements Bucket {
             // Calculate the normal towards the next vertex in this line. In case
             // there is no next vertex, pretend that the line is continuing straight,
             // meaning that we are just using the previous normal.
-            nextNormal = nextVertex ? nextVertex.sub(currentVertex)._unit()._perp() : prevNormal;
+            // Fallback to a horizontal vector if there is no previous normal,
+            // (i.e. when a single line is collapsing to a point)
+            if (nextEqualsCurrent || !nextVertex) {
+                nextNormal = prevNormal || new Point(1, 0);
+            } else {
+                nextNormal = nextVertex.sub(currentVertex)._unit()._perp();
+            }
 
             // If we still don't have a previous normal, this is the beginning of a
             // non-closed line, so we're doing a straight "join".
