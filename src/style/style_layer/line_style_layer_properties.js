@@ -19,6 +19,7 @@ import type Formatted from '../../style-spec/expression/types/formatted';
 
 export type LayoutProps = {|
     "line-cap": DataConstantProperty<"butt" | "round" | "square">,
+    "line-collapse": DataConstantProperty<boolean>,
     "line-join": DataDrivenProperty<"bevel" | "round" | "miter">,
     "line-miter-limit": DataConstantProperty<number>,
     "line-round-limit": DataConstantProperty<number>,
@@ -27,6 +28,7 @@ export type LayoutProps = {|
 
 const layout: Properties<LayoutProps> = new Properties({
     "line-cap": new DataConstantProperty(styleSpec["layout_line"]["line-cap"]),
+    "line-collapse": new DataConstantProperty(styleSpec["layout_line"]["line-collapse"]),
     "line-join": new DataDrivenProperty(styleSpec["layout_line"]["line-join"]),
     "line-miter-limit": new DataConstantProperty(styleSpec["layout_line"]["line-miter-limit"]),
     "line-round-limit": new DataConstantProperty(styleSpec["layout_line"]["line-round-limit"]),
