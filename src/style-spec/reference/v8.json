@@ -920,7 +920,7 @@
         "data-driven styling": {}
       },
       "expression": {
-        "interpolated": true,
+        "interpolated": false,
         "parameters": [
           "zoom"
         ]
