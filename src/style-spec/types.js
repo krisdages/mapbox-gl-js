@@ -126,6 +126,7 @@ export type GeoJSONSourceSpecification = {|
     "cluster"?: boolean,
     "clusterRadius"?: number,
     "clusterMaxZoom"?: number,
+    "clusterMinPoints"?: number,
     "clusterProperties"?: mixed,
     "lineMetrics"?: boolean,
     "generateId"?: boolean,
@@ -187,6 +188,7 @@ export type LineLayerSpecification = {|
     "filter"?: FilterSpecification,
     "layout"?: {|
         "line-cap"?: PropertyValueSpecification<"butt" | "round" | "square">,
+        "line-collapse"?: PropertyValueSpecification<boolean>,
         "line-join"?: DataDrivenPropertyValueSpecification<"bevel" | "round" | "miter">,
         "line-miter-limit"?: PropertyValueSpecification<number>,
         "line-round-limit"?: PropertyValueSpecification<number>,
